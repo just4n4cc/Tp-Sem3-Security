@@ -1,6 +1,4 @@
 Dockerfile
 README.md
 .*
-*.key
-certs/
-*.crt
+certs/*
