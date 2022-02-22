@@ -13,19 +13,38 @@ const (
 	sslResponse = "HTTP/1.0 200 Connection established\r\n\r\n"
 )
 
+type Proxy struct {
+	serverCfg *tls.Config
+	clientCfg *tls.Config
+}
+
+var p = Proxy{}
+
 func main() {
 	cert, err := tls.LoadX509KeyPair("myproxy-ca.crt", "myproxy-ca.key")
 	if err != nil {
 		print(err.Error(), "\n")
 		return
 	}
-	cfg := &tls.Config{
+	p.serverCfg = &tls.Config{
 		Certificates: []tls.Certificate{cert},
 		//MaxVersion:   tls.VersionTLS11,
 		//MaxVersion: tls.VersionTLS12,
 		//MaxVersion: tls.VersionTLS13,
 		NextProtos: []string{"http/1.1", "http2"},
 	}
+	//files, err := ioutil.ReadDir("./certs")
+	//if err != nil {
+	//	print(err.Error(), "\n")
+	//	return
+	//}
+	//for _, file := range files {
+	//	cert, err = tls.LoadX509KeyPair("./certs/"+file.Name(), "./cert.key")
+	//	if err == nil {
+	//		cfg.Certificates = append(cfg.Certificates, cert)
+	//	}
+	//}
+	//print("certs num = ", len(cfg.Certificates), "\n")
 
 	l, err := net.Listen("tcp4", ":8080")
 	//l, err := tls.Listen("tcp4", ":8080", cfg)
@@ -40,11 +59,11 @@ func main() {
 		if err != nil {
 			print(err.Error(), "\n")
 		}
-		go handleConn(conn, cfg)
+		go handleConn(conn)
 	}
 }
 
-func handleConn(conn net.Conn, cfg *tls.Config) {
+func handleConn(conn net.Conn) {
 	req, err := myhttp.NewMyReq(conn)
 	if err != nil {
 		print(err.Error(), "\n")
@@ -56,7 +75,7 @@ func handleConn(conn net.Conn, cfg *tls.Config) {
 	print("==================\n")
 	print(req.Head + "\n" + req.Body)
 	if req.Method == "CONNECT" {
-		handleSSL(req, conn, cfg)
+		handleSSL(req, conn)
 	} else {
 		handleNoSSL(req, conn)
 	}
@@ -68,7 +87,7 @@ func handleConn(conn net.Conn, cfg *tls.Config) {
 	}
 }
 
-func handleSSL(req *myhttp.MyReq, conn net.Conn, cfg *tls.Config) {
+func handleSSL(req *myhttp.MyReq, conn net.Conn) {
 	newConn := &tls.Conn{}
 	_, err := conn.Write([]byte(sslResponse))
 	if err != nil {
@@ -81,10 +100,14 @@ func handleSSL(req *myhttp.MyReq, conn net.Conn, cfg *tls.Config) {
 		return
 	}
 
-	sConfig := cfg
+	sConfig := new(tls.Config)
+	*sConfig = *p.serverCfg
 	sConfig.GetCertificate = func(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
 		//cConfig := sConfig
 		cConfig := new(tls.Config)
+		if p.clientCfg != nil {
+			*cConfig = *p.clientCfg
+		}
 		//if p.TLSClientConfig != nil {
 		//	*cConfig = *p.TLSClientConfig
 		//}
@@ -195,6 +218,11 @@ func handleNoSSL(req *myhttp.MyReq, conn net.Conn) {
 
 func getCertificate(name string) (*tls.Certificate, error) {
 	//print("lala")
+	cert, err := tls.LoadX509KeyPair("./certs/"+name+".crt", "./cert.key")
+	if err == nil {
+		return &cert, nil
+	}
+
 	print("name = ", name, "\n")
 	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
 	serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
@@ -212,7 +240,7 @@ func getCertificate(name string) (*tls.Certificate, error) {
 		print(err.Error(), "\n")
 		return &tls.Certificate{}, err
 	}
-	cert, err := tls.LoadX509KeyPair("./certs/"+name+".crt", "cert.key")
+	cert, err = tls.LoadX509KeyPair("./certs/"+name+".crt", "cert.key")
 	//cert, err := tls.LoadX509KeyPair("./certs/mail.ru.crt", "cert.key")
 	if err != nil {
 		print("here!!!")
