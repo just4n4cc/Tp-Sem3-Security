@@ -87,3 +87,56 @@ func headBodySplit(raw string) (string, string, error) {
 	body := raw[bodyStart+len("\r\n"):]
 	return head, body, nil
 }
+
+func chanFromConn(conn net.Conn) chan []byte {
+	c := make(chan []byte)
+
+	go func() {
+		b := make([]byte, 1024)
+
+		for {
+			n, err := conn.Read(b)
+			if n > 0 {
+				res := make([]byte, n)
+				copy(res, b[:n])
+				c <- res
+			}
+			if err != nil {
+				c <- nil
+				break
+			}
+		}
+	}()
+
+	return c
+}
+
+func PipeConns(conn1 net.Conn, conn2 net.Conn) {
+	chan1 := chanFromConn(conn1)
+	chan2 := chanFromConn(conn2)
+
+	for {
+		select {
+		case b1 := <-chan1:
+			if b1 == nil {
+				//print("because b1 is nil\n")
+				return
+			} else {
+				_, err := conn2.Write(b1)
+				if err != nil {
+					return
+				}
+			}
+		case b2 := <-chan2:
+			if b2 == nil {
+				//print("because b2 is nil\n")
+				return
+			} else {
+				_, err := conn1.Write(b2)
+				if err != nil {
+					return
+				}
+			}
+		}
+	}
+}
