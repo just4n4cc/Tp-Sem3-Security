@@ -1,4 +1,7 @@
 .idea/
+*.key
+certs/
+*.crt
 # Binaries for programs and plugins
 *.exe
 *.exe~
